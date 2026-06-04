@@ -2,7 +2,7 @@
 
 [manifest]
 id = "sf64_randomizer_hoebbisch"
-version = "0.1.0"
+version = "0.2.0"
 display_name = "Star Fox 64 Randomizer"
 description = """
 A seed-based, fully deterministic randomizer for Star Fox 64: Recompiled. \
@@ -35,6 +35,30 @@ name = "Seed"
 description = "Seed-Text (z.B. 'RUN-123'). Gleicher Seed = gleicher Run. Leer = Standard-Seed."
 type = "String"
 default = "lylat"
+
+[[manifest.config_options]]
+id = "enum_random_planets"
+name = "Random Planets"
+description = "Ersetzt jedes Level seed-deterministisch durch ein zufaelliges (Venom-Endgame bleibt). WIP."
+type = "Enum"
+options = [ "Enabled", "Disabled" ]
+default = "Enabled"
+
+[[manifest.config_options]]
+id = "enum_start_planet"
+name = "Start Planet"
+description = "Random = erstes Level zufaellig (wie Original). Corneria = klassischer fester Start. Aendert NICHT die Seed-Route der Slots 1-5."
+type = "Enum"
+options = [ "Random", "Corneria" ]
+default = "Random"
+
+[[manifest.config_options]]
+id = "enum_random_items"
+name = "Random Items"
+description = "Tauscht Item-Drops seed-deterministisch (Typ -> Typ). Pfad-Marker bleiben unberuehrt."
+type = "Enum"
+options = [ "Enabled", "Disabled" ]
+default = "Enabled"
 
 [[manifest.config_options]]
 id = "enum_random_music"

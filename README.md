@@ -16,14 +16,19 @@ assets or ROM data — you bring your own legally obtained copy of the game
 |---|---|---|
 | 🎵 Random Music | ✅ | Shuffles the 15 main level themes deterministically per seed. Boss/menu music untouched. |
 | ⏩ Skip Intros & Briefings (QoL) | ✅ | Level intros and General Pepper briefings are always skippable with **START** / faster with **A** — even on a first playthrough. |
-| 🪐 Random Planets | 🚧 planned | The core feature — a seeded, beatable planet sequence. |
-| 💥 One-Hit KO, Random Items, … | 🚧 planned | More to come. |
+| 📦 Random Items | ✅ | Seeded type→type swap of item pickups. Path markers untouched. |
+| 🔒 Seed lock | ✅ | Seed is frozen at run start, so a run stays reproducible. |
+| 🪐 Random Planets | 🧪 testing | Seeded route, forced at level load. Structure: start + 4 random → Area 6 / Bolse → Venom. Toggle for random vs. fixed Corneria start. |
+| 💥 One-Hit KO, special modes, … | 🚧 planned | More to come. |
 
 ## Configuration
 
 Open the mod's config in the in-game **Mods** menu:
 
 - **Seed** — any text (e.g. `RUN-123`). Same seed = same run. Share it to race.
+  (Frozen at run start; change it before a new game.)
+- **Random Planets** — on/off. **Start Planet** — `Random` (like the original) or `Corneria`.
+- **Random Items** — on/off.
 - **Random Music** — on/off.
 - **Skip Intros & Briefings** — on/off.
 
