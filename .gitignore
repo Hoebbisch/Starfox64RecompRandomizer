@@ -1,0 +1,23 @@
+# Build artifacts
+*.d
+*.o
+*.elf
+*.bin
+*.exe
+*.dll
+*.lib
+*.pdb
+*.exp
+*.map
+*.nrm
+build/
+
+# Tooling / local
+funcs.h
+patches.map
+.vscode/settings.json
+__pycache__/
+
+# OS
+Thumbs.db
+.DS_Store

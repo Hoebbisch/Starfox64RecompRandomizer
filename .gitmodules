@@ -1,0 +1,6 @@
+[submodule "Starfox64RecompSyms"]
+	path = Starfox64RecompSyms
+	url = https://github.com/sonicdcer/Starfox64RecompSyms
+[submodule "sf64"]
+	path = sf64
+	url = https://github.com/sonicdcer/sf64

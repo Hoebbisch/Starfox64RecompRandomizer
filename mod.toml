@@ -1,0 +1,53 @@
+# Star Fox 64: Recompiled — Randomizer
+
+[manifest]
+id = "sf64_randomizer_hoebbisch"
+version = "0.1.0"
+display_name = "Star Fox 64 Randomizer"
+description = """
+A seed-based, fully deterministic randomizer for Star Fox 64: Recompiled. \
+Same seed = same run, so it's speedrun-friendly. \
+
+Inspired by punk7890's original ASM randomizer. Built on sonicdcer's recomp & decomp. \
+Free & open source."""
+short_description = "Seed-based randomizer (speedrun-friendly). WIP."
+authors = [ "Hoebbisch" ]
+game_id = "sf64"
+minimum_recomp_version = "1.0.0"
+
+dependencies = [ ]
+native_libraries = [ ]
+
+[inputs]
+elf_path = "build/mod.elf"
+mod_filename = "sf64_randomizer"
+func_reference_syms_file = "Starfox64RecompSyms/sf64.us.rev1.syms.toml"
+data_reference_syms_files = [ "Starfox64RecompSyms/sf64.us.rev1.datasyms.toml" ]
+additional_files = [ ]
+
+# -------------------------------------------------------------------------
+# Config options (erscheinen im Mods-Menue unter diesem Mod)
+# -------------------------------------------------------------------------
+
+[[manifest.config_options]]
+id = "seed"
+name = "Seed"
+description = "Seed-Text (z.B. 'RUN-123'). Gleicher Seed = gleicher Run. Leer = Standard-Seed."
+type = "String"
+default = "lylat"
+
+[[manifest.config_options]]
+id = "enum_random_music"
+name = "Random Music"
+description = "Mischt die Level-Musik deterministisch nach Seed."
+type = "Enum"
+options = [ "Enabled", "Disabled" ]
+default = "Enabled"
+
+[[manifest.config_options]]
+id = "enum_skip_intros"
+name = "Skip Intros & Briefings (QoL)"
+description = "Level-Intros und Mission-Briefings immer mit START skippbar / A beschleunigbar (auch beim ersten Durchgang)."
+type = "Enum"
+options = [ "Enabled", "Disabled" ]
+default = "Enabled"

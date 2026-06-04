@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Mod",
+            "includePath": [
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/sf64/include",
+                "${workspaceFolder}/sf64/src"
+            ],
+            "defines": [
+                "F3DEX_GBI",
+                "_LANGUAGE_C",
+                "MIPS"
+            ],
+            "compilerPath": "clang",
+            "cStandard": "c99",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "clang-x86"
+        }
+    ],
+    "version": 4
+}
