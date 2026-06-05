@@ -19,7 +19,9 @@ assets or ROM data — you bring your own legally obtained copy of the game
 | 📦 Random Items | ✅ | Seeded type→type swap of item pickups. Path markers untouched. |
 | 🔒 Seed lock | ✅ | Seed is frozen at run start, so a run stays reproducible. |
 | 🪐 Random Planets | 🧪 testing | Seeded route, forced at level load. Structure: start + 4 random → Area 6 / Bolse → Venom. Toggle for random vs. fixed Corneria start. |
-| 💥 One-Hit KO, special modes, … | 🚧 planned | More to come. |
+| 💥 One-Hit KO | 🧪 testing | Hardmode: Fox dies on any hit that gets through. An active shield item still absorbs its one hit. |
+| 🔥 Expert Mode | 🧪 testing | Runs the whole run in expert difficulty (double damage, more enemies, expert ending) — no need to unlock it in-game first. Locked at run start like the seed. |
+| 🏁 Special modes (Marathon, Boss Rush, …) | 🚧 planned | More to come. |
 
 ## Configuration
 
@@ -30,6 +32,8 @@ Open the mod's config in the in-game **Mods** menu:
 - **Random Planets** — on/off. **Start Planet** — `Random` (like the original) or `Corneria`.
 - **Random Items** — on/off.
 - **Random Music** — on/off.
+- **Expert Mode** — on/off. Starts the run in expert difficulty (locked at new game).
+- **One-Hit KO** — on/off. Hardmode: Fox dies on any hit.
 - **Skip Intros & Briefings** — on/off.
 
 ## Installing (players)
