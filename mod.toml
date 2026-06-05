@@ -2,7 +2,7 @@
 
 [manifest]
 id = "sf64_randomizer_hoebbisch"
-version = "0.3.0"
+version = "0.4.0"
 display_name = "Star Fox 64 Randomizer"
 description = """
 A seed-based, fully deterministic randomizer for Star Fox 64: Recompiled. \
@@ -67,6 +67,14 @@ description = "Mischt die Level-Musik deterministisch nach Seed."
 type = "Enum"
 options = [ "Enabled", "Disabled" ]
 default = "Enabled"
+
+[[manifest.config_options]]
+id = "enum_marathon"
+name = "Marathon (WIP)"
+description = "Spielt Level am Stueck ohne Karte dazwischen. PHASE 1: Test-Kette aus 4 Leveln (Corneria, Meteo, Katina, Sector X); danach faellt der Run zurueck auf die Karte (= Kette hat funktioniert). Volle Level-Liste + Venom-Finale folgen."
+type = "Enum"
+options = [ "Disabled", "Enabled" ]
+default = "Disabled"
 
 [[manifest.config_options]]
 id = "enum_expert_mode"

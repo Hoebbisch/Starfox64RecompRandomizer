@@ -14,6 +14,8 @@
 
 #include "context.h"
 #include "functions.h"
+#include "sys.h"
+#include "sf64thread.h"
 #include "sfx.h"
 #include "bgm.h"
 #include "audioseq_cmd.h"
@@ -76,6 +78,12 @@ static u32 Rando_ReadSeedConfig(void) {
  * ----------------------------------------------------------------------- */
 static u32 sLockedSeed = 0;
 static u8 sSeedLocked = 0;
+
+/* Marathon: nach einem nahtlosen Level-Wechsel sind alle Sequence-Player auf
+ * Volume 0 gefadet (Audio_FadeOutAll im GSTATE_PLAY-Zweig). Dieses Flag laesst
+ * den Audio_PlaySequence-Patch die Lautstaerken beim ersten BGM des neuen
+ * Levels einmalig wiederherstellen. Gesetzt im Marathon-Chain-Hook. */
+static u8 sMarathonRestoreAudio = 0;
 
 static u32 Rando_CurrentSeed(void) {
     return sSeedLocked ? sLockedSeed : Rando_ReadSeedConfig();
@@ -149,6 +157,16 @@ static int Rando_MusicEnabled(void) {
  * Wir haengen nur unsere Remap-Zeile davor.
  */
 RECOMP_PATCH void Audio_PlaySequence(u8 seqPlayId, u16 seqId, u8 fadeinTime, u8 bgmParam) {
+    /* Marathon: beim ersten BGM des neuen Levels die vom seamless-Uebergang
+     * stummgeschalteten Sequence-Player wieder aufdrehen (sonst ist nach dem
+     * Levelwechsel der GESAMTE Sound weg). Einmalig (One-Shot). */
+    if (sMarathonRestoreAudio && (seqPlayId == SEQ_PLAYER_BGM)) {
+        sMarathonRestoreAudio = 0;
+        SEQCMD_SET_SEQPLAYER_VOLUME(SEQ_PLAYER_BGM, 0, 127);
+        SEQCMD_SET_SEQPLAYER_VOLUME(SEQ_PLAYER_FANFARE, 0, 127);
+        SEQCMD_SET_SEQPLAYER_VOLUME(SEQ_PLAYER_SFX, 0, 127);
+        SEQCMD_SET_SEQPLAYER_VOLUME(SEQ_PLAYER_VOICE, 0, 127);
+    }
     if ((seqPlayId == SEQ_PLAYER_BGM) && Rando_MusicEnabled()) {
         seqId = Rando_RemapBgm(seqId);
     }
@@ -174,6 +192,99 @@ extern bool gExpertMode;
 /* enum_expert_mode: 0 = Disabled (Default), 1 = Enabled */
 static int Rando_ExpertEnabled(void) {
     return recomp_get_config_u32("enum_expert_mode") == 1;
+}
+
+/* =========================================================================
+ *  Feature: Marathon Mode (continuous) — PHASE 1 (Verkettungs-Beweis)
+ *
+ *  Spielt Level am Stueck OHNE Karte dazwischen. Mechanik:
+ *  Bei Level-Ende setzt das Spiel gNextGameState = GSTATE_MAP (zur Karte).
+ *  -> Wir haengen uns per Hook an Game_SetGameState, erkennen eine NACH-LEVEL
+ *     Karten-Transition (gLastGameState == GSTATE_PLAY) und schreiben sie auf
+ *     GSTATE_PLAY um (statt GSTATE_MAP). Dann macht der ORIGINAL-GSTATE_PLAY-
+ *     Zweig von Game_SetGameState die ganze Arbeit: gCurrentLevel = gNextLevel;
+ *     Play_Setup(); gPlayState = PLAY_STANDBY; Memory_FreeAll(); ... — exakt der
+ *     Lebenszyklus, den die engine-eigenen Venom-Uebergaenge (Area6->Venom2,
+ *     Bolse->Venom1) nutzen.
+ *  Die Karte wird nie betreten -> Map_Setup_Play laeuft nie -> gMissionNumber
+ *  bleibt stehen -> KEIN Array-Overflow (die Mission-Arrays haben nur 7 Slots).
+ *
+ *  WARUM ES VORHER CRASHTE (per Quellcode-Analyse): Wir umgingen Play_Setup().
+ *  Das ist die EINZIGE Stelle, die den On-Rails-Streaming-Cursor
+ *  gSavedObjectLoadIndex auf 0 setzt. Nach Level-Ende ist der gross; ohne Reset
+ *  liest Player_Setup ihn zurueck (fox_play.c:4546) und func_enmy_80062568()
+ *  indiziert gLevelObjects[] out-of-bounds -> harter Crash (szene-unabhaengig,
+ *  daher auch Corneria->Corneria). Fix: GSTATE_PLAY-Route (Play_Setup laeuft) +
+ *  derselbe Audio-/Objekt-Teardown, den die Venom-Uebergaenge VOR dem Wechsel
+ *  machen (sonst dereferenziert Audio nach Memory_FreeAll den alten Spieler).
+ *
+ *  PHASE 1: kurze Testkette aus Standard-Planetenleveln (die normal -> Karte
+ *  gehen). Nach dem letzten Eintrag faellt der Run regulaer auf die Karte
+ *  zurueck = die Kette hat funktioniert. Venom-Finale / volle Level-Liste =
+ *  Phase 2 (Venom ist mehrphasig + Area6/Bolse haben Sonder-Endflow).
+ * ========================================================================= */
+static const s32 kMarathonLevels[] = {
+    LEVEL_CORNERIA, LEVEL_METEO, LEVEL_KATINA, LEVEL_SECTOR_X,
+};
+#define MARATHON_LEN ((s32) (sizeof(kMarathonLevels) / sizeof(kMarathonLevels[0])))
+
+static s32 sMarathonStep = 0; /* aktueller Index in kMarathonLevels; Reset bei New Game */
+
+static int Rando_MarathonEnabled(void) {
+    return recomp_get_config_u32("enum_marathon") == 1; /* Default: Disabled */
+}
+
+/*
+ * Naechstes Level verketten: laeuft am Anfang von Game_SetGameState, BEVOR
+ * dessen switch gNextGameState liest. Nur echte Nach-Level-Transitionen zur
+ * Karte werden umgelenkt (gLastGameState == GSTATE_PLAY) — die erste Karte
+ * beim Neuen Spiel (aus dem Menue) bleibt unangetastet.
+ */
+RECOMP_HOOK("Game_SetGameState") void Rando_MarathonChain(void) {
+    s32 i;
+    if (!Rando_MarathonEnabled()) {
+        return;
+    }
+    if ((gNextGameState != GSTATE_MAP) || (gLastGameState != GSTATE_PLAY)) {
+        return; /* keine Nach-Level Karten-Transition */
+    }
+    if ((sMarathonStep + 1) >= MARATHON_LEN) {
+        return; /* Kette zu Ende -> regulaer zur Karte/Ending */
+    }
+    sMarathonStep++;
+
+    /* CRASH-SCHUTZ (noetig): haengende SFX-Referenz auf den gleich
+     * freigegebenen Spieler entfernen — sonst dereferenziert der Audio-Code nach
+     * Memory_FreeAll den alten gPlayer -> Crash. Reines SFX (kein BGM). */
+    Audio_StopPlayerNoise(0);
+    Audio_KillSfxBySource(gPlayer[0].sfxSource);
+    Play_ClearObjectData();
+    gSavedGoldRingCount[0] = gGoldRingCount[0];
+    for (i = TEAM_ID_FALCO; i < TEAM_ID_MAX; i++) {
+        gSavedTeamShields[i] = gTeamShields[i];
+    }
+
+    /* DER eigentliche Crash-Fix: den On-Rails-Streaming-Cursor nullen, damit
+     * func_enmy_80062568() im naechsten Player_Setup nicht out-of-bounds liest.
+     * Play_Setup() (laeuft gleich im GSTATE_PLAY-Zweig) nullt das ebenfalls,
+     * wir setzen es vorab als Sicherheitsgurt. */
+    gSavedObjectLoadIndex = 0;
+    gObjectLoadIndex = 0;
+    gSavedPathProgress = 0.0f;
+
+    /* Transition von GSTATE_MAP auf GSTATE_PLAY umschreiben und den ORIGINAL-
+     * Body von Game_SetGameState die Arbeit machen lassen: gCurrentLevel =
+     * gNextLevel; Play_Setup() (scrubt gCsWasNotSkipped/Cursor/Phase/Timer);
+     * gPlayState = PLAY_STANDBY; Memory_FreeAll(); gNextGameStateTimer = 3.
+     * KEIN gPlayState/gLoadLevelObjects/gCurrentLevel hier selbst setzen. */
+    gNextLevel = (u16) kMarathonLevels[sMarathonStep];
+    gNextLevelPhase = 0;
+    gNextGameState = GSTATE_PLAY;
+
+    /* Der GSTATE_PLAY-Zweig fadet gleich alle Sequence-Player auf 0
+     * (Audio_FadeOutAll). Da wir die Karte ueberspringen (die das normal wieder
+     * aufdreht), Lautstaerke-Restore beim ersten BGM des neuen Levels anstossen. */
+    sMarathonRestoreAudio = 1;
 }
 
 /* =========================================================================
@@ -296,6 +407,14 @@ void Map_CurrentLevel_Setup(void);
  */
 RECOMP_HOOK("Map_PlayLevel") void Rando_ForceLevel(void) {
     PlanetId p;
+    if (Rando_MarathonEnabled()) {
+        /* Marathon steuert die Kette: erstes Level direkt setzen (alle
+         * weiteren laufen ueber den Game_SetGameState-Hook, nicht hierher).
+         * Hat Vorrang vor Random Planets. */
+        s32 step = ((sMarathonStep >= 0) && (sMarathonStep < MARATHON_LEN)) ? sMarathonStep : 0;
+        gCurrentLevel = (LevelId) kMarathonLevels[step];
+        return;
+    }
     if (!Rando_PlanetsEnabled()) {
         return;
     }
@@ -312,6 +431,7 @@ RECOMP_HOOK("Map_PlayLevel") void Rando_ForceLevel(void) {
 RECOMP_HOOK_RETURN("Map_Setup_Menu") void Rando_OnRunStart(void) {
     sLockedSeed = Rando_ReadSeedConfig();
     sSeedLocked = 1;
+    sMarathonStep = 0; /* Marathon-Kette von vorne */
     if (Rando_ExpertEnabled()) {
         gExpertMode = true; /* fuer den ganzen Run fix, wie der Seed */
     }
@@ -398,30 +518,37 @@ RECOMP_PATCH void Item_Load(Item* this, ObjectInit* objInit) {
  *
  *  Fox stirbt bei JEDEM Treffer sofort. Das ASM-Original patcht dafuer einen
  *  Store-Befehl so um, dass 0 in die Gesundheit geschrieben wird. Im Decomp
- *  brauchen wir das nicht: Schaden laeuft ueber Player_ApplyDamage() (setzt
- *  player->damage) und wird dann Frame fuer Frame in Player_UpdateShields()
- *  vom Schild abgezogen. Wir haengen uns per Return-Hook an Player_ApplyDamage
- *  und setzen den Schild direkt auf 0 -> sofortiger Tod statt langsamem Drain.
+ *  setzen wir einfach den Schildbalken (player->shields) auf 0 = Tod.
  *
- *  player->damage != 0 bedeutet: ein echter Treffer kam durch. Bei aktivem
- *  Schild-Item (gHasShield) hat das Original player->damage bereits auf 0
- *  gesetzt -> dann toeten wir NICHT (das Item darf seinen einen Treffer noch
- *  absorbieren). Rein deterministisch, kein Seed-Bezug.
+ *  WICHTIG (Crash-Fix): Das muss ein ENTRY-Hook (RECOMP_HOOK) sein, KEIN
+ *  Return-Hook. Bei RECOMP_HOOK_RETURN sind die Argument-Register (a0=player)
+ *  nach dem Funktionsdurchlauf evtl. ueberschrieben -> 'player' war Muell ->
+ *  player->shields = 0 schrieb an eine wilde Adresse -> harter Crash zum
+ *  Desktop. Beim Entry-Hook sind die Argumente garantiert gueltig.
+ *
+ *  Da wir am Funktionsanfang sind, pruefen wir die Schild-Item-Absorption
+ *  selbst (statt auf das spaeter gesetzte player->damage zu schauen):
+ *  - damage == 0  -> kein echter Treffer, nichts tun.
+ *  - gHasShield[num] -> das Schild-Item absorbiert diesen Treffer, nicht toeten.
+ *  Sonst: shields = 0. Rein deterministisch, kein Seed-Bezug.
  * ========================================================================= */
 static int Rando_OneHitKOEnabled(void) {
     return recomp_get_config_u32("enum_one_hit_ko") == 1; /* Default: Disabled */
 }
 
-RECOMP_HOOK_RETURN("Player_ApplyDamage")
+RECOMP_HOOK("Player_ApplyDamage")
 void Rando_OneHitKO(Player* player, s32 direction, s32 damage) {
     (void) direction;
-    (void) damage;
     if (!Rando_OneHitKOEnabled()) {
         return;
     }
-    if (player->damage != 0) { /* echter Treffer (Schild-Item hat nicht absorbiert) */
-        player->shields = 0;   /* = Tod beim naechsten Shield-Update */
+    if (damage == 0) {
+        return; /* kein echter Treffer */
     }
+    if (gHasShield[player->num]) {
+        return; /* aktives Schild-Item absorbiert diesen Treffer */
+    }
+    player->shields = 0; /* sofortiger Tod */
 }
 
 /* =========================================================================
