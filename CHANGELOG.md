@@ -2,6 +2,57 @@
 
 All notable changes to this project are documented here.
 
+## [0.5.0] - 2026-06-05
+
+### Added
+- **Marathon — full run + Venom finale.** Play all 12 normal planets
+  back-to-back without the map, then a chosen gateway into the Venom endgame
+  (→ Venom → Andross → ending). Two config dropdowns:
+  - **Marathon:** `Disabled` / `Bolse` / `Area 6` / `Expert + Bolse` /
+    `Expert + Area 6` (Bolse = longer via Venom 1 + 2; Area 6 = shorter/harder;
+    Expert variants force expert difficulty).
+  - **Marathon: Level order:** `Shuffled (Seed)` or `Fixed`.
+- The gateway (Bolse/Area 6) is the final marathon level; its completion
+  self-chains into Venom via the engine's own `GSTATE_PLAY` transitions, which
+  the marathon hook leaves untouched (it only rewrites the post-level
+  `GSTATE_MAP` transition).
+
+### Verified
+- Bolse gateway with Fixed level order: full end-to-end run confirmed.
+
+### To verify
+- Shuffled (Seed) order (determinism + variability); Area 6 gateway; Expert
+  variants; the ending score screen (`gMissionNumber` stays 0 in marathon).
+
+## [0.4.0] - 2026-06-05
+
+### Added
+- **Marathon mode (early WIP)** — continuous level-to-level transitions without
+  the map in between. Phase 1: a 4-level test chain.
+
+### Fixed
+- Hard crash on the seamless level→level transition: skipping `Play_Setup`
+  left a stale on-rails streaming cursor (`gSavedObjectLoadIndex`), making the
+  next level's `Player_Setup` out-of-bounds index the object table. Now routed
+  through the engine's own `GSTATE_PLAY` branch (like the Venom transitions),
+  with the matching audio/object teardown before `Memory_FreeAll`.
+- Lost audio after a transition: `Audio_FadeOutAll` mutes every sequence player
+  and the skipped map normally restores them — volumes are now restored on the
+  first track of the next level.
+
+## [0.3.0] - 2026-06-05
+
+### Added
+- **One-Hit KO (Hardmode)** — Fox dies on any hit that gets through; an active
+  shield item still absorbs its one hit.
+- **Expert Mode** — runs the whole run in expert difficulty (double damage, more
+  enemies, expert ending), locked at run start like the seed; no in-game unlock
+  needed.
+
+### Verified
+- Random Planets determinism: same seed → same planet order; different seed →
+  different order (the 0.2.0 to-verify item).
+
 ## [0.2.0] - 2026-06-04 (WIP)
 
 ### Added
