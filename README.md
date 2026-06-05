@@ -21,7 +21,7 @@ assets or ROM data — you bring your own legally obtained copy of the game
 | 🪐 Random Planets | 🧪 testing | Seeded route, forced at level load. Structure: start + 4 random → Area 6 / Bolse → Venom. Toggle for random vs. fixed Corneria start. |
 | 💥 One-Hit KO | 🧪 testing | Hardmode: Fox dies on any hit that gets through. An active shield item still absorbs its one hit. |
 | 🔥 Expert Mode | 🧪 testing | Runs the whole run in expert difficulty (double damage, more enemies, expert ending) — no need to unlock it in-game first. Locked at run start like the seed. |
-| 🏃 Marathon | 🧪 early WIP | Plays levels back-to-back without the map in between. Phase 1: a 4-level test chain (Corneria → Meteo → Katina → Sector X), then back to the map. Full level list + Venom finale coming next. |
+| 🏃 Marathon | 🧪 testing | All 12 planets back-to-back without the map, then a Venom finale. Pick the gateway (**Bolse** → Venom 1 → Venom 2 → Andross, or **Area 6** → Venom 2 → Andross) and the level order (seed-shuffled or fixed). Expert variants force expert difficulty. |
 | 🏁 Other special modes (Boss Rush, …) | 🚧 planned | More to come. |
 
 ## Configuration
@@ -35,7 +35,9 @@ Open the mod's config in the in-game **Mods** menu:
 - **Random Music** — on/off.
 - **Expert Mode** — on/off. Starts the run in expert difficulty (locked at new game).
 - **One-Hit KO** — on/off. Hardmode: Fox dies on any hit.
-- **Marathon (WIP)** — on/off. Plays levels back-to-back without the map (early WIP).
+- **Marathon** — `Disabled` / `Bolse` / `Area 6` / `Expert + Bolse` / `Expert + Area 6`.
+  All 12 planets back-to-back, then the chosen gateway into Venom.
+  **Marathon: Level order** — `Shuffled (Seed)` or `Fixed`.
 - **Skip Intros & Briefings** — on/off.
 
 ## Installing (players)

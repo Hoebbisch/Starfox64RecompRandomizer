@@ -195,43 +195,106 @@ static int Rando_ExpertEnabled(void) {
 }
 
 /* =========================================================================
- *  Feature: Marathon Mode (continuous) — PHASE 1 (Verkettungs-Beweis)
+ *  Feature: Marathon Mode (continuous) — PHASE 2
  *
- *  Spielt Level am Stueck OHNE Karte dazwischen. Mechanik:
- *  Bei Level-Ende setzt das Spiel gNextGameState = GSTATE_MAP (zur Karte).
- *  -> Wir haengen uns per Hook an Game_SetGameState, erkennen eine NACH-LEVEL
- *     Karten-Transition (gLastGameState == GSTATE_PLAY) und schreiben sie auf
- *     GSTATE_PLAY um (statt GSTATE_MAP). Dann macht der ORIGINAL-GSTATE_PLAY-
- *     Zweig von Game_SetGameState die ganze Arbeit: gCurrentLevel = gNextLevel;
- *     Play_Setup(); gPlayState = PLAY_STANDBY; Memory_FreeAll(); ... — exakt der
- *     Lebenszyklus, den die engine-eigenen Venom-Uebergaenge (Area6->Venom2,
- *     Bolse->Venom1) nutzen.
- *  Die Karte wird nie betreten -> Map_Setup_Play laeuft nie -> gMissionNumber
- *  bleibt stehen -> KEIN Array-Overflow (die Mission-Arrays haben nur 7 Slots).
+ *  Spielt alle Level am Stueck OHNE Karte dazwischen. Mechanik (aus Phase 1):
+ *  Bei Level-Ende setzt das Spiel gNextGameState = GSTATE_MAP. Unser Hook auf
+ *  Game_SetGameState erkennt die NACH-LEVEL-Transition (gLastGameState ==
+ *  GSTATE_PLAY) und schreibt sie auf GSTATE_PLAY + naechstes Marathon-Level um.
+ *  Der engine-eigene GSTATE_PLAY-Zweig macht den ganzen sauberen Lebenszyklus
+ *  (Play_Setup -> scrubt u.a. den On-Rails-Cursor gSavedObjectLoadIndex, sonst
+ *  OOB-Crash; Memory_FreeAll; PLAY_STANDBY). Karte wird nie betreten ->
+ *  gMissionNumber bleibt stehen -> kein 7-Slot-Overflow. Audio: der seamless-
+ *  Pfad ueberspringt den Lautstaerke-Restore der Karte -> One-Shot in unserem
+ *  Audio_PlaySequence-Patch (sMarathonRestoreAudio).
  *
- *  WARUM ES VORHER CRASHTE (per Quellcode-Analyse): Wir umgingen Play_Setup().
- *  Das ist die EINZIGE Stelle, die den On-Rails-Streaming-Cursor
- *  gSavedObjectLoadIndex auf 0 setzt. Nach Level-Ende ist der gross; ohne Reset
- *  liest Player_Setup ihn zurueck (fox_play.c:4546) und func_enmy_80062568()
- *  indiziert gLevelObjects[] out-of-bounds -> harter Crash (szene-unabhaengig,
- *  daher auch Corneria->Corneria). Fix: GSTATE_PLAY-Route (Play_Setup laeuft) +
- *  derselbe Audio-/Objekt-Teardown, den die Venom-Uebergaenge VOR dem Wechsel
- *  machen (sonst dereferenziert Audio nach Memory_FreeAll den alten Spieler).
+ *  PHASE 2: 12 normale Planeten-Level (feste ODER seed-gemischte Reihenfolge),
+ *  dann der gewaehlte Gateway als letztes Marathon-Level:
+ *    - Bolse  -> Venom 1 -> Venom 2 -> Andross -> Ending
+ *    - Area 6 -> Venom 2 -> Andross -> Ending
+ *  Das Venom-Endspiel kettet sich SELBST via GSTATE_PLAY (keine GSTATE_MAP-
+ *  Transition) -> unser Hook fasst es nicht an, das Spiel laeuft allein bis zum
+ *  Abspann (GSTATE_ENDING). WICHTIG: Area6/Bolse duerfen NIE im Mittel-Pool
+ *  stehen (ihre Completion springt sofort zu Venom) — nur als Gateway am Ende.
  *
- *  PHASE 1: kurze Testkette aus Standard-Planetenleveln (die normal -> Karte
- *  gehen). Nach dem letzten Eintrag faellt der Run regulaer auf die Karte
- *  zurueck = die Kette hat funktioniert. Venom-Finale / volle Level-Liste =
- *  Phase 2 (Venom ist mehrphasig + Area6/Bolse haben Sonder-Endflow).
+ *  Config:
+ *    enum_marathon:       0=Disabled, 1=Bolse, 2=Area6, 3=Expert+Bolse,
+ *                         4=Expert+Area6  (Expert-Varianten erzwingen gExpertMode)
+ *    enum_marathon_order: 0=Shuffled (Seed, Default), 1=Fixed
  * ========================================================================= */
-static const s32 kMarathonLevels[] = {
-    LEVEL_CORNERIA, LEVEL_METEO, LEVEL_KATINA, LEVEL_SECTOR_X,
+
+/* 12 normale Planeten-Level (OHNE Area6/Bolse/Venom = Gateway/Endgame). */
+static const s32 kMarathonPool[] = {
+    LEVEL_CORNERIA, LEVEL_METEO,   LEVEL_SECTOR_Y, LEVEL_FORTUNA,
+    LEVEL_AQUAS,    LEVEL_KATINA,  LEVEL_ZONESS,   LEVEL_MACBETH,
+    LEVEL_SECTOR_X, LEVEL_TITANIA, LEVEL_SECTOR_Z, LEVEL_SOLAR,
 };
-#define MARATHON_LEN ((s32) (sizeof(kMarathonLevels) / sizeof(kMarathonLevels[0])))
+#define MARATHON_POOL_N ((s32) (sizeof(kMarathonPool) / sizeof(kMarathonPool[0])))
+#define MARATHON_LEN (MARATHON_POOL_N + 1) /* + Gateway (Bolse/Area6) als letztes */
+#define MARATHON_SALT 0x4D525448u          /* "MRTH" */
 
-static s32 sMarathonStep = 0; /* aktueller Index in kMarathonLevels; Reset bei New Game */
+static s32 sMarathonStep = 0; /* aktueller Index; Reset bei New Game */
+static u8 sMarathonPerm[MARATHON_POOL_N];
+static u32 sMarathonBuiltSeed;
+static u8 sMarathonPermBuilt = 0;
 
+static u32 Rando_MarathonMode(void) {
+    return recomp_get_config_u32("enum_marathon"); /* 0..4, Default 0 */
+}
 static int Rando_MarathonEnabled(void) {
-    return recomp_get_config_u32("enum_marathon") == 1; /* Default: Disabled */
+    return Rando_MarathonMode() != 0u;
+}
+/* Gateway: Area 6 bei Modus 2/4, sonst Bolse (Modus 1/3). */
+static int Rando_MarathonArea6(void) {
+    u32 m = Rando_MarathonMode();
+    return (m == 2u) || (m == 4u);
+}
+/* Expert-Varianten (Modus 3/4) erzwingen zusaetzlich Expert Mode. */
+static int Rando_MarathonExpert(void) {
+    u32 m = Rando_MarathonMode();
+    return (m == 3u) || (m == 4u);
+}
+/* enum_marathon_order: 0 = Shuffled (Seed, Default), 1 = Fixed. */
+static int Rando_MarathonFixedOrder(void) {
+    return recomp_get_config_u32("enum_marathon_order") == 1u;
+}
+
+static void Rando_BuildMarathonPerm(u32 seed) {
+    s32 i;
+    for (i = 0; i < MARATHON_POOL_N; i++) {
+        sMarathonPerm[i] = (u8) i;
+    }
+    Rando_RngSeed(seed ^ MARATHON_SALT);
+    for (i = MARATHON_POOL_N - 1; i > 0; i--) {
+        u32 j = Rando_RngNext() % (u32) (i + 1);
+        u8 tmp = sMarathonPerm[i];
+        sMarathonPerm[i] = sMarathonPerm[j];
+        sMarathonPerm[j] = tmp;
+    }
+    sMarathonBuiltSeed = seed;
+    sMarathonPermBuilt = 1;
+}
+
+/* Welches LEVEL gehoert zu Marathon-Schritt 'step'?
+ *   step 0 .. POOL_N-1 = Mittel-Pool (fest oder seed-gemischt)
+ *   step >= POOL_N      = Gateway (Bolse/Area6) -> danach Venom-Selbstkette */
+static s32 Rando_MarathonLevel(s32 step) {
+    if (step >= MARATHON_POOL_N) {
+        return Rando_MarathonArea6() ? LEVEL_AREA_6 : LEVEL_BOLSE;
+    }
+    if (step < 0) {
+        step = 0;
+    }
+    if (Rando_MarathonFixedOrder()) {
+        return kMarathonPool[step];
+    }
+    {
+        u32 seed = Rando_CurrentSeed();
+        if (!sMarathonPermBuilt || (seed != sMarathonBuiltSeed)) {
+            Rando_BuildMarathonPerm(seed);
+        }
+        return kMarathonPool[sMarathonPerm[step]];
+    }
 }
 
 /*
@@ -277,7 +340,7 @@ RECOMP_HOOK("Game_SetGameState") void Rando_MarathonChain(void) {
      * gNextLevel; Play_Setup() (scrubt gCsWasNotSkipped/Cursor/Phase/Timer);
      * gPlayState = PLAY_STANDBY; Memory_FreeAll(); gNextGameStateTimer = 3.
      * KEIN gPlayState/gLoadLevelObjects/gCurrentLevel hier selbst setzen. */
-    gNextLevel = (u16) kMarathonLevels[sMarathonStep];
+    gNextLevel = (u16) Rando_MarathonLevel(sMarathonStep);
     gNextLevelPhase = 0;
     gNextGameState = GSTATE_PLAY;
 
@@ -411,8 +474,7 @@ RECOMP_HOOK("Map_PlayLevel") void Rando_ForceLevel(void) {
         /* Marathon steuert die Kette: erstes Level direkt setzen (alle
          * weiteren laufen ueber den Game_SetGameState-Hook, nicht hierher).
          * Hat Vorrang vor Random Planets. */
-        s32 step = ((sMarathonStep >= 0) && (sMarathonStep < MARATHON_LEN)) ? sMarathonStep : 0;
-        gCurrentLevel = (LevelId) kMarathonLevels[step];
+        gCurrentLevel = (LevelId) Rando_MarathonLevel(sMarathonStep);
         return;
     }
     if (!Rando_PlanetsEnabled()) {
@@ -432,7 +494,10 @@ RECOMP_HOOK_RETURN("Map_Setup_Menu") void Rando_OnRunStart(void) {
     sLockedSeed = Rando_ReadSeedConfig();
     sSeedLocked = 1;
     sMarathonStep = 0; /* Marathon-Kette von vorne */
-    if (Rando_ExpertEnabled()) {
+    if (Rando_MarathonEnabled() && !Rando_MarathonFixedOrder()) {
+        Rando_BuildMarathonPerm(sLockedSeed); /* gemischte Reihenfolge fuer den Run einfrieren */
+    }
+    if (Rando_ExpertEnabled() || Rando_MarathonExpert()) {
         gExpertMode = true; /* fuer den ganzen Run fix, wie der Seed */
     }
 }
