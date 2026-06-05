@@ -157,6 +157,26 @@ RECOMP_PATCH void Audio_PlaySequence(u8 seqPlayId, u16 seqId, u8 fadeinTime, u8 
 }
 
 /* =========================================================================
+ *  Feature: Expert Mode
+ *
+ *  Laesst den Run direkt im Expert-Schwierigkeitsgrad laufen, ohne dass man
+ *  Expert erst im Spiel freischalten/anwaehlen muss. gExpertMode ist der globale
+ *  Laufzeit-Schalter: true bedeutet doppelter Schaden (Player_ApplyDamage),
+ *  aggressivere/mehr Gegner (fox_enmy.c) und das Expert-Ending.
+ *
+ *  Wir erzwingen ihn beim Run-Start (Map_Setup_Menu = Neues Spiel) — genau wie
+ *  der Seed eingefroren wird. Damit ist die Schwierigkeit fuer den ganzen Run
+ *  fix (fair fuers Racing) und greift, ohne das Savefile zu faelschen. Ist der
+ *  Toggle aus, fassen wir nichts an (Vanilla: Spieler kann selbst waehlen).
+ * ========================================================================= */
+extern bool gExpertMode;
+
+/* enum_expert_mode: 0 = Disabled (Default), 1 = Enabled */
+static int Rando_ExpertEnabled(void) {
+    return recomp_get_config_u32("enum_expert_mode") == 1;
+}
+
+/* =========================================================================
  *  Feature: Random Planets (Herzstueck) — Routen-Version
  *
  *  Wir randomisieren auf PLANETEN-Ebene, nicht erst beim Level-Start. So
@@ -287,10 +307,14 @@ RECOMP_HOOK("Map_PlayLevel") void Rando_ForceLevel(void) {
     Map_CurrentLevel_Setup(); /* gCurrentLevel aus sCurrentPlanetId ableiten */
 }
 
-/* Run-Start (Map_Setup_Menu = Neues Spiel): Seed einfrieren (Reproduzierbar). */
+/* Run-Start (Map_Setup_Menu = Neues Spiel): Seed einfrieren (Reproduzierbar)
+ * und Expert-Mode fuer den Run setzen, falls der Toggle an ist. */
 RECOMP_HOOK_RETURN("Map_Setup_Menu") void Rando_OnRunStart(void) {
     sLockedSeed = Rando_ReadSeedConfig();
     sSeedLocked = 1;
+    if (Rando_ExpertEnabled()) {
+        gExpertMode = true; /* fuer den ganzen Run fix, wie der Seed */
+    }
 }
 
 /* =========================================================================
@@ -367,6 +391,37 @@ RECOMP_PATCH void Item_Load(Item* this, ObjectInit* objInit) {
     this->obj.id = Rando_RemapItem(objInit->id);
     this->width = 1.0f;
     Object_SetInfo(&this->info, this->obj.id);
+}
+
+/* =========================================================================
+ *  Feature: One-Hit-KO (Hardmode)
+ *
+ *  Fox stirbt bei JEDEM Treffer sofort. Das ASM-Original patcht dafuer einen
+ *  Store-Befehl so um, dass 0 in die Gesundheit geschrieben wird. Im Decomp
+ *  brauchen wir das nicht: Schaden laeuft ueber Player_ApplyDamage() (setzt
+ *  player->damage) und wird dann Frame fuer Frame in Player_UpdateShields()
+ *  vom Schild abgezogen. Wir haengen uns per Return-Hook an Player_ApplyDamage
+ *  und setzen den Schild direkt auf 0 -> sofortiger Tod statt langsamem Drain.
+ *
+ *  player->damage != 0 bedeutet: ein echter Treffer kam durch. Bei aktivem
+ *  Schild-Item (gHasShield) hat das Original player->damage bereits auf 0
+ *  gesetzt -> dann toeten wir NICHT (das Item darf seinen einen Treffer noch
+ *  absorbieren). Rein deterministisch, kein Seed-Bezug.
+ * ========================================================================= */
+static int Rando_OneHitKOEnabled(void) {
+    return recomp_get_config_u32("enum_one_hit_ko") == 1; /* Default: Disabled */
+}
+
+RECOMP_HOOK_RETURN("Player_ApplyDamage")
+void Rando_OneHitKO(Player* player, s32 direction, s32 damage) {
+    (void) direction;
+    (void) damage;
+    if (!Rando_OneHitKOEnabled()) {
+        return;
+    }
+    if (player->damage != 0) { /* echter Treffer (Schild-Item hat nicht absorbiert) */
+        player->shields = 0;   /* = Tod beim naechsten Shield-Update */
+    }
 }
 
 /* =========================================================================

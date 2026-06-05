@@ -69,6 +69,22 @@ options = [ "Enabled", "Disabled" ]
 default = "Enabled"
 
 [[manifest.config_options]]
+id = "enum_expert_mode"
+name = "Expert Mode"
+description = "Startet den Run direkt im Expert-Schwierigkeitsgrad (doppelter Schaden, mehr Gegner, Expert-Ending) — ohne ihn erst freispielen zu muessen. Wird beim Neuen Spiel fuer den ganzen Run festgelegt."
+type = "Enum"
+options = [ "Disabled", "Enabled" ]
+default = "Disabled"
+
+[[manifest.config_options]]
+id = "enum_one_hit_ko"
+name = "One-Hit-KO (Hardmode)"
+description = "Fox stirbt bei jedem Treffer sofort. Ein aktives Schild-Item darf seinen einen Treffer noch absorbieren."
+type = "Enum"
+options = [ "Disabled", "Enabled" ]
+default = "Disabled"
+
+[[manifest.config_options]]
 id = "enum_skip_intros"
 name = "Skip Intros & Briefings (QoL)"
 description = "Level-Intros und Mission-Briefings immer mit START skippbar / A beschleunigbar (auch beim ersten Durchgang)."
