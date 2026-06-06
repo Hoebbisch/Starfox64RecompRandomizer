@@ -1,7 +1,9 @@
 # Star Fox 64 Randomizer (Recompiled)
 
 A **free & open-source randomizer mod** for
-[Star Fox 64: Recompiled](https://github.com/sonicdcer/Starfox64Recomp).
+[Star Fox 64: Recompiled](https://github.com/sonicdcer/Starfox64Recomp) — the
+native PC port created by **[sonicdcer](https://github.com/sonicdcer)**. You
+need that port installed to run this mod.
 
 > **Seed-deterministic by design** — the same seed always produces the same
 > run, so it's built for **fair seed racing and speedrunning**. 🏁

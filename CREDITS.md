@@ -4,9 +4,9 @@ This randomizer stands on the shoulders of several projects and people.
 Huge thanks to everyone below.
 
 ## Core foundations
-- **sonicdcer** — for the entire ecosystem this mod is built on:
-  - [Star Fox 64: Recompiled](https://github.com/sonicdcer/Starfox64Recomp) — the native PC port (N64: Recompiled based).
-  - [sf64](https://github.com/sonicdcer/sf64) — the Star Fox 64 decompilation, whose named functions/types make modding possible (included as a submodule).
+- **[sonicdcer](https://github.com/sonicdcer)** — creator of **Star Fox 64: Recompiled**, and the foundation this entire mod is built on:
+  - [Star Fox 64: Recompiled](https://github.com/sonicdcer/Starfox64Recomp) — the native PC port (N64: Recompiled based) that this mod runs on, created by sonicdcer.
+  - [sf64](https://github.com/sonicdcer/sf64) — the Star Fox 64 decompilation (led by sonicdcer, with petrie911, KiritoDv, inspectredc, Ryan-Myers & other contributors), whose named functions/types make modding possible (included as a submodule).
   - [SF64RecompModTemplate](https://github.com/sonicdcer/SF64RecompModTemplate) — the mod template this project was bootstrapped from.
   - [Starfox64RecompSyms](https://github.com/sonicdcer/Starfox64RecompSyms) — reference symbol files (included as a submodule).
 
