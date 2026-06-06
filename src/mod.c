@@ -22,6 +22,8 @@
 #include "fox_map.h"
 #include "sf64level.h"
 #include "sf64object.h"
+#include "sf64player.h" /* ArwingInfo (Ship-Skin-Hook-Signatur) */
+#include "gfx.h"        /* gMasterDisp, gGfxMatrix, gbi-Makros, Matrix_* */
 
 void Audio_ClearVoice(void);
 
@@ -614,6 +616,129 @@ void Rando_OneHitKO(Player* player, s32 direction, s32 damage) {
         return; /* aktives Schild-Item absorbiert diesen Treffer */
     }
     player->shields = 0; /* sofortiger Tod */
+}
+
+/* =========================================================================
+ *  Feature: Ship Skin (Spielerschiff-Modell tauschen) — PoC
+ *
+ *  Tauscht das gezeichnete Spielerschiff gegen ein anderes Modell (Wolfen,
+ *  Katt, Bill). Rein KOSMETISCH — Hitbox, Steuerung, Gameplay unveraendert.
+ *
+ *  Render-Mechanik: Das Spielerschiff wird in Display_Arwing_Skel gezeichnet
+ *  (Arwing = animiertes Skelett aAwArwingSkel). Wir ersetzen diese Funktion und
+ *  zeichnen bei aktivem Skin stattdessen die statische Schiffs-DisplayList am
+ *  selben gGfxMatrix-Transform. Ist kein Skin aktiv (oder Modell im aktuellen
+ *  Level nicht ladbar, s.u.), laeuft 1:1 das Original.
+ *
+ *  WICHTIG (PoC-Grenze): SF64 laedt Modelle PRO LEVEL in Speicher-Segmente.
+ *  Der Arwing liegt im immer-geladenen Segment 0x03, die anderen Schiffe aber
+ *  nur in Leveln, wo sie vorkommen:
+ *    - Wolfen (Std + Venom, Seg 0x0F): Fortuna, Bolse, Katina, Venom 2, TRAINING
+ *    - Katt / Bill         (Seg 0x0D): Sector X/Z, Solar, Zoness, Venom 1, Macbeth
+ *  Ausserhalb dieser Level ist das Segment nicht geladen -> wir wuerden Muell
+ *  zeichnen/crashen. Darum gibt Rando_ShipSkinDL() dort NULL zurueck (= normaler
+ *  Arwing). Universelles Nachladen des Segments kommt als naechster Schritt.
+ *  Schnellster Test: Skin = Wolfen, Modus TRAINING (sofort aus dem Menue).
+ * ========================================================================= */
+
+/* Schiffs-DisplayLists (in keinem Mod-Header; via Daten-Syms aufgeloest). */
+extern Gfx aStarWolfStandardShipDL[];
+extern Gfx aStarWolfUpgradedShipDL[];
+extern Gfx aKattShipDL[];
+extern Gfx aBillShipDL[];
+
+/* enum_ship_skin: 0=Arwing(Default), 1=Wolfen, 2=Wolfen(Venom), 3=Katt, 4=Bill */
+static u32 Rando_ShipSkinMode(void) {
+    return recomp_get_config_u32("enum_ship_skin");
+}
+
+/* Ist das Wolfen-Segment (0x0F) im aktuellen Level geladen? */
+static int Rando_WolfenLoaded(void) {
+    switch (gCurrentLevel) {
+        case LEVEL_FORTUNA:
+        case LEVEL_BOLSE:
+        case LEVEL_KATINA:
+        case LEVEL_VENOM_2:
+        case LEVEL_TRAINING:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+/* Ist das Allies-Segment (0x0D, Katt/Bill) im aktuellen Level geladen? */
+static int Rando_AlliesLoaded(void) {
+    switch (gCurrentLevel) {
+        case LEVEL_SECTOR_X:
+        case LEVEL_SECTOR_Z:
+        case LEVEL_SOLAR:
+        case LEVEL_ZONESS:
+        case LEVEL_VENOM_1:
+        case LEVEL_MACBETH:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+/* Liefert die Schiffs-DisplayList fuer den aktiven Skin — oder NULL, wenn kein
+ * Skin gewaehlt ist, wir nicht im Gameplay sind ODER das Modell im aktuellen
+ * Level nicht geladen ist (dann normaler Arwing, kein Crash/Muell). */
+static Gfx* Rando_ShipSkinDL(void) {
+    if (gGameState != GSTATE_PLAY) {
+        return NULL; /* nur im Level, nicht in Menue/Titel/Ending */
+    }
+    switch (Rando_ShipSkinMode()) {
+        case 1: /* Wolfen (Standard) */
+            return Rando_WolfenLoaded() ? aStarWolfStandardShipDL : NULL;
+        case 2: /* Wolfen (Venom/Upgraded) */
+            return Rando_WolfenLoaded() ? aStarWolfUpgradedShipDL : NULL;
+        case 3: /* Katt */
+            return Rando_AlliesLoaded() ? aKattShipDL : NULL;
+        case 4: /* Bill */
+            return Rando_AlliesLoaded() ? aBillShipDL : NULL;
+        default: /* 0 = Arwing */
+            return NULL;
+    }
+}
+
+/*
+ * WICHTIG: Display_Arwing_Skel ist bereits vom Basis-Recomp-Port gepatcht
+ * (Rendering-Enhancements). Eine schon gepatchte Funktion darf NICHT per
+ * RECOMP_PATCH ersetzt werden (Mod-Ladefehler). HOOKS koexistieren dagegen mit
+ * Basis-Patches — daher loesen wir den Modell-Swap rein ueber Hooks:
+ *   1) Entry-Hook auf Display_Arwing_Skel: zeichnet das Schiffsmodell am
+ *      Spieler-Transform (gGfxMatrix steht beim Eintritt auf der Schiffspose).
+ *   2) Entry-Hook auf den Limb-Draw-Callback: nullt die Arwing-Glieder, sodass
+ *      das Original-Skelett unsichtbar bleibt.
+ */
+RECOMP_HOOK("Display_Arwing_Skel") void Rando_ShipSkinDraw(ArwingInfo* arwing) {
+    Gfx* skinDL = Rando_ShipSkinDL();
+    (void) arwing;
+    if (skinDL == NULL) {
+        return;
+    }
+    Matrix_Push(&gGfxMatrix);
+    Matrix_SetGfxMtx(&gMasterDisp);
+    gSPDisplayList(gMasterDisp++, skinDL);
+    Matrix_Pop(&gGfxMatrix);
+}
+
+/*
+ * Versteckt das Arwing-Skelett bei aktivem Skin. Der Callback bekommt pro Glied
+ * die Default-DisplayList in *gfxPtr; wir nullen sie. Fuer Glieder, die das
+ * Original nicht selbst ueberschreibt (Rumpf + intakte Fluegel), bleibt NULL
+ * stehen -> nichts gezeichnet. Entry-Hook (Koexistenz mit dem Basis-Port).
+ */
+RECOMP_HOOK("Display_ArwingOverrideLimbDraw")
+void Rando_ShipSkinHideLimb(s32 limbIndex, Gfx** gfxPtr, Vec3f* pos, Vec3f* rot, void* wingData) {
+    (void) limbIndex;
+    (void) pos;
+    (void) rot;
+    (void) wingData;
+    if (Rando_ShipSkinDL() != NULL) {
+        *gfxPtr = NULL;
+    }
 }
 
 /* =========================================================================

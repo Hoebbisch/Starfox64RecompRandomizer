@@ -101,6 +101,14 @@ options = [ "Disabled", "Enabled" ]
 default = "Disabled"
 
 [[manifest.config_options]]
+id = "enum_ship_skin"
+name = "Ship Skin (PoC)"
+description = "Tauscht das Spielerschiff-Modell (rein kosmetisch). PoC: das gewaehlte Modell wird nur in Leveln gezeichnet, in denen es geladen ist, sonst normaler Arwing. Wolfen: Fortuna/Bolse/Katina/Venom 2/TRAINING. Katt/Bill: Sector X/Z, Solar, Zoness, Venom 1, Macbeth. Schnelltest: Wolfen im Training-Modus."
+type = "Enum"
+options = [ "Arwing", "Wolfen", "Wolfen (Venom)", "Katt", "Bill" ]
+default = "Arwing"
+
+[[manifest.config_options]]
 id = "enum_skip_intros"
 name = "Skip Intros & Briefings (QoL)"
 description = "Level-Intros und Mission-Briefings immer mit START skippbar / A beschleunigbar (auch beim ersten Durchgang)."
