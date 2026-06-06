@@ -24,6 +24,7 @@ assets or ROM data — you bring your own legally obtained copy of the game
 | 💥 One-Hit KO | 🧪 testing | Hardmode: Fox dies on any hit that gets through. An active shield item still absorbs its one hit. |
 | 🔥 Expert Mode | 🧪 testing | Runs the whole run in expert difficulty (double damage, more enemies, expert ending) — no need to unlock it in-game first. Locked at run start like the seed. |
 | 🏃 Marathon | 🧪 testing | All 12 planets back-to-back without the map, then a Venom finale. Pick the gateway (**Bolse** → Venom 1 → Venom 2 → Andross, or **Area 6** → Venom 2 → Andross) and the level order (seed-shuffled or fixed). Expert variants force expert difficulty. |
+| 🛸 Ship Skin | 🧪 testing | Fly a different ship: **Wolfen** / **Wolfen (Venom)** / **Katt** / **Bill** instead of the Arwing. Purely cosmetic (hitbox/controls unchanged); the model is loaded on demand so it works in every level. |
 | 🏁 Other special modes (Boss Rush, …) | 🚧 planned | More to come. |
 
 ## Configuration
@@ -40,6 +41,8 @@ Open the mod's config in the in-game **Mods** menu:
 - **Marathon** — `Disabled` / `Bolse` / `Area 6` / `Expert + Bolse` / `Expert + Area 6`.
   All 12 planets back-to-back, then the chosen gateway into Venom.
   **Marathon: Level order** — `Shuffled (Seed)` or `Fixed`.
+- **Ship Skin** — `Arwing` / `Wolfen` / `Wolfen (Venom)` / `Katt` / `Bill`. Cosmetic
+  player-ship swap; works in every level.
 - **Skip Intros & Briefings** — on/off.
 
 ## Installing (players)

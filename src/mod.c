@@ -22,8 +22,9 @@
 #include "fox_map.h"
 #include "sf64level.h"
 #include "sf64object.h"
-#include "sf64player.h" /* ArwingInfo (Ship-Skin-Hook-Signatur) */
-#include "gfx.h"        /* gMasterDisp, gGfxMatrix, gbi-Makros, Matrix_* */
+#include "sf64player.h"        /* ArwingInfo (Ship-Skin-Hook-Signatur) */
+#include "gfx.h"               /* gMasterDisp, gGfxMatrix, gbi-Makros, Matrix_* */
+#include "rt64_extended_gbi.h" /* gEXSetRDRAMExtended (Ship-Skin im erweiterten RDRAM) */
 
 void Audio_ClearVoice(void);
 
@@ -619,26 +620,29 @@ void Rando_OneHitKO(Player* player, s32 direction, s32 damage) {
 }
 
 /* =========================================================================
- *  Feature: Ship Skin (Spielerschiff-Modell tauschen) — PoC
+ *  Feature: Ship Skin (Spielerschiff-Modell tauschen) — UNIVERSAL
  *
  *  Tauscht das gezeichnete Spielerschiff gegen ein anderes Modell (Wolfen,
  *  Katt, Bill). Rein KOSMETISCH — Hitbox, Steuerung, Gameplay unveraendert.
  *
- *  Render-Mechanik: Das Spielerschiff wird in Display_Arwing_Skel gezeichnet
- *  (Arwing = animiertes Skelett aAwArwingSkel). Wir ersetzen diese Funktion und
- *  zeichnen bei aktivem Skin stattdessen die statische Schiffs-DisplayList am
- *  selben gGfxMatrix-Transform. Ist kein Skin aktiv (oder Modell im aktuellen
- *  Level nicht ladbar, s.u.), laeuft 1:1 das Original.
+ *  Render-Mechanik (rein ueber Hooks, da Display_Arwing_Skel vom Basis-Port
+ *  bereits gepatcht ist -> RECOMP_PATCH verboten):
+ *   1) Entry-Hook Display_Arwing_Skel: zeichnet die Schiffs-DisplayList am
+ *      Spieler-Transform (gGfxMatrix).
+ *   2) Entry-Hook Display_ArwingOverrideLimbDraw: nullt die Arwing-Glieder,
+ *      versteckt also das Original-Skelett.
  *
- *  WICHTIG (PoC-Grenze): SF64 laedt Modelle PRO LEVEL in Speicher-Segmente.
- *  Der Arwing liegt im immer-geladenen Segment 0x03, die anderen Schiffe aber
- *  nur in Leveln, wo sie vorkommen:
- *    - Wolfen (Std + Venom, Seg 0x0F): Fortuna, Bolse, Katina, Venom 2, TRAINING
- *    - Katt / Bill         (Seg 0x0D): Sector X/Z, Solar, Zoness, Venom 1, Macbeth
- *  Ausserhalb dieser Level ist das Segment nicht geladen -> wir wuerden Muell
- *  zeichnen/crashen. Darum gibt Rando_ShipSkinDL() dort NULL zurueck (= normaler
- *  Arwing). Universelles Nachladen des Segments kommt als naechster Schritt.
- *  Schnellster Test: Skin = Wolfen, Modus TRAINING (sofort aus dem Menue).
+ *  SEGMENT-PROBLEM & LOESUNG: SF64 laedt Modelle PRO LEVEL in Speicher-Segmente
+ *  (Arwing=0x03 immer da; Wolfen=0x0F, Katt/Bill=0x0D nur in bestimmten Leveln).
+ *  Die Schiffs-DLs codieren ihre Vertex-/Textur-Zeiger mit ihrer NATIVEN
+ *  Segment-Nummer -> nur ein Bind auf genau diese Nummer loest korrekt auf.
+ *  Damit der Skin in JEDEM Level geht, laden wir das Asset einmalig per DMA aus
+ *  dem ROM (Load_RomFile, wie die Engine selbst) in einen mod-eigenen Puffer
+ *  (recomp_alloc, resident) und binden es beim Zeichnen kurz auf sein natives
+ *  Segment um (gSPSegment), zeichnen, und setzen das Segment sofort wieder auf
+ *  den vorherigen Wert zurueck — so bleibt das Level-eigene Rendering (z.B.
+ *  echte Star-Wolf-Gegner in Katina) unangetastet. DMA laeuft EINMALIG im
+ *  Play_Setup-Hook (Main-Thread), nie im Zeichen-Pfad.
  * ========================================================================= */
 
 /* Schiffs-DisplayLists (in keinem Mod-Header; via Daten-Syms aufgeloest). */
@@ -647,59 +651,97 @@ extern Gfx aStarWolfUpgradedShipDL[];
 extern Gfx aKattShipDL[];
 extern Gfx aBillShipDL[];
 
+/* ROM-Quell-Symbole der Asset-Segmente (Schluessel fuer Load_RomFile, exakt wie
+ * DMA_ENTRY(...) in dmatable.c). Adresse = vRomAddress, NICHT der Inhalt. */
+extern u8 ast_star_wolf_ROM_START[]; /* 0x00940AD0 */
+extern u8 ast_allies_ROM_START[];    /* 0x00955270 */
+
+/* Engine-DMA (nicht in functions.h deklariert). compFlag der Schiffs-Assets ist
+ * false -> reiner Lib_DmaRead, keine Dekompression, kein Framebuffer-Stomp. */
+void Load_RomFile(void* vRomAddress, void* dest, s32 size);
+
+#define SHIP_WOLFEN_SEG 0x0F
+#define SHIP_ALLIES_SEG 0x0D
+#define SHIP_WOLFEN_SZ  0x147A0 /* ast_star_wolf_ROM_END - _START */
+#define SHIP_ALLIES_SZ  0x0CA70 /* ast_allies_ROM_END    - _START */
+
+/* Mod-eigene, residente Puffer (einmalig per DMA gefuellt, nie freigegeben). */
+static void* sWolfenBuf = NULL;
+static u8 sWolfenLoaded = 0;
+static void* sAlliesBuf = NULL;
+static u8 sAlliesLoaded = 0;
+
 /* enum_ship_skin: 0=Arwing(Default), 1=Wolfen, 2=Wolfen(Venom), 3=Katt, 4=Bill */
 static u32 Rando_ShipSkinMode(void) {
     return recomp_get_config_u32("enum_ship_skin");
 }
 
-/* Ist das Wolfen-Segment (0x0F) im aktuellen Level geladen? */
-static int Rando_WolfenLoaded(void) {
-    switch (gCurrentLevel) {
-        case LEVEL_FORTUNA:
-        case LEVEL_BOLSE:
-        case LEVEL_KATINA:
-        case LEVEL_VENOM_2:
-        case LEVEL_TRAINING:
-            return 1;
-        default:
-            return 0;
+/* Laedt das benoetigte Asset-Segment EINMALIG ins mod-eigene RAM (Main-Thread,
+ * blockierender DMA -> NICHT aus dem Zeichen-Pfad aufrufen). Idempotent. */
+static void Rando_EnsureShipAsset(u32 skin) {
+    if (((skin == 1) || (skin == 2)) && !sWolfenLoaded) {
+        if (sWolfenBuf == NULL) {
+            sWolfenBuf = recomp_alloc(SHIP_WOLFEN_SZ);
+        }
+        if (sWolfenBuf != NULL) {
+            Load_RomFile(ast_star_wolf_ROM_START, sWolfenBuf, SHIP_WOLFEN_SZ);
+            sWolfenLoaded = 1;
+        }
+    } else if (((skin == 3) || (skin == 4)) && !sAlliesLoaded) {
+        if (sAlliesBuf == NULL) {
+            sAlliesBuf = recomp_alloc(SHIP_ALLIES_SZ);
+        }
+        if (sAlliesBuf != NULL) {
+            Load_RomFile(ast_allies_ROM_START, sAlliesBuf, SHIP_ALLIES_SZ);
+            sAlliesLoaded = 1;
+        }
     }
 }
 
-/* Ist das Allies-Segment (0x0D, Katt/Bill) im aktuellen Level geladen? */
-static int Rando_AlliesLoaded(void) {
-    switch (gCurrentLevel) {
-        case LEVEL_SECTOR_X:
-        case LEVEL_SECTOR_Z:
-        case LEVEL_SOLAR:
-        case LEVEL_ZONESS:
-        case LEVEL_VENOM_1:
-        case LEVEL_MACBETH:
-            return 1;
-        default:
-            return 0;
-    }
+/* Preload beim Level-Eintritt (Main-Thread, NICHT im Gfx-Pfad). */
+RECOMP_HOOK("Play_Setup") void Rando_PreloadShipAsset(void) {
+    Rando_EnsureShipAsset(Rando_ShipSkinMode());
 }
 
 /* Liefert die Schiffs-DisplayList fuer den aktiven Skin — oder NULL, wenn kein
- * Skin gewaehlt ist, wir nicht im Gameplay sind ODER das Modell im aktuellen
- * Level nicht geladen ist (dann normaler Arwing, kein Crash/Muell). */
+ * Skin gewaehlt ist, wir nicht im Gameplay sind ODER der Puffer noch nicht
+ * geladen ist (dann normaler Arwing; greift, bis Play_Setup geladen hat). */
 static Gfx* Rando_ShipSkinDL(void) {
     if (gGameState != GSTATE_PLAY) {
         return NULL; /* nur im Level, nicht in Menue/Titel/Ending */
     }
     switch (Rando_ShipSkinMode()) {
         case 1: /* Wolfen (Standard) */
-            return Rando_WolfenLoaded() ? aStarWolfStandardShipDL : NULL;
+            return sWolfenLoaded ? aStarWolfStandardShipDL : NULL;
         case 2: /* Wolfen (Venom/Upgraded) */
-            return Rando_WolfenLoaded() ? aStarWolfUpgradedShipDL : NULL;
+            return sWolfenLoaded ? aStarWolfUpgradedShipDL : NULL;
         case 3: /* Katt */
-            return Rando_AlliesLoaded() ? aKattShipDL : NULL;
+            return sAlliesLoaded ? aKattShipDL : NULL;
         case 4: /* Bill */
-            return Rando_AlliesLoaded() ? aBillShipDL : NULL;
+            return sAlliesLoaded ? aBillShipDL : NULL;
         default: /* 0 = Arwing */
             return NULL;
     }
+}
+
+/* Natives Segment + Segment-Basis fuer den aktiven Skin (seg 0 = keiner).
+ * WICHTIG: recomp_alloc liefert Speicher im ERWEITERTEN RDRAM (>= 0x81000000).
+ * K0_TO_PHYS (& 0x1FFFFFFF) wuerde das ueber die echten 8 MB abschneiden -> RT64
+ * liest Muell -> Crash. Stattdessen die erweiterte Basis uebergeben (roher RDRAM-
+ * Offset mit Bit 31 gesetzt); RT64 macht das im extended-Modus exakt rueckgaengig
+ * (Basis - 0x80000000). Bit 31 traegt sich auf alle internen 0x0F-Zeiger der DL
+ * weiter, sodass auch Vertices/Texturen korrekt aufloesen. */
+static u8 Rando_ShipSkinSeg(u32* outBase) {
+    u32 m = Rando_ShipSkinMode();
+    if (((m == 1) || (m == 2)) && sWolfenLoaded) {
+        *outBase = ((u32) sWolfenBuf - 0x80000000u) | 0x80000000u;
+        return SHIP_WOLFEN_SEG;
+    }
+    if (((m == 3) || (m == 4)) && sAlliesLoaded) {
+        *outBase = ((u32) sAlliesBuf - 0x80000000u) | 0x80000000u;
+        return SHIP_ALLIES_SEG;
+    }
+    return 0;
 }
 
 /*
@@ -714,13 +756,32 @@ static Gfx* Rando_ShipSkinDL(void) {
  */
 RECOMP_HOOK("Display_Arwing_Skel") void Rando_ShipSkinDraw(ArwingInfo* arwing) {
     Gfx* skinDL = Rando_ShipSkinDL();
+    u32 base = 0;
+    u8 seg;
+    u32 save;
     (void) arwing;
     if (skinDL == NULL) {
         return;
     }
+    seg = Rando_ShipSkinSeg(&base);
+    if (seg == 0) {
+        return; /* Puffer nicht bereit -> normaler Arwing in diesem Frame */
+    }
+    /* Extended-RDRAM-Modus AN, natives Segment kurz auf unseren (erweiterten)
+     * Puffer biegen, Schiff zeichnen, Modus AUS und Segment wieder auf den Level-
+     * Wert zuruecksetzen — so bleiben Level-eigene DLs (echte Wolf/Allies-Gegner)
+     * intakt. gSegments[] (CPU-Spiegel) NICHT anfassen: diese DL nutzt nur die
+     * RSP-Segmente; ein erweiterter Wert im CPU-Spiegel wuerde Engine-Aufloesungen
+     * zerschiessen. Klammer eng um genau den Schiffs-Draw (Flag ist globaler RT64-
+     * Zustand). */
+    save = gSegments[seg];
     Matrix_Push(&gGfxMatrix);
     Matrix_SetGfxMtx(&gMasterDisp);
+    gEXSetRDRAMExtended(gMasterDisp++, 1);
+    gSPSegment(gMasterDisp++, seg, base);
     gSPDisplayList(gMasterDisp++, skinDL);
+    gEXSetRDRAMExtended(gMasterDisp++, 0);
+    gSPSegment(gMasterDisp++, seg, save);
     Matrix_Pop(&gGfxMatrix);
 }
 

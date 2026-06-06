@@ -102,8 +102,8 @@ default = "Disabled"
 
 [[manifest.config_options]]
 id = "enum_ship_skin"
-name = "Ship Skin (PoC)"
-description = "Tauscht das Spielerschiff-Modell (rein kosmetisch). PoC: das gewaehlte Modell wird nur in Leveln gezeichnet, in denen es geladen ist, sonst normaler Arwing. Wolfen: Fortuna/Bolse/Katina/Venom 2/TRAINING. Katt/Bill: Sector X/Z, Solar, Zoness, Venom 1, Macbeth. Schnelltest: Wolfen im Training-Modus."
+name = "Ship Skin"
+description = "Tauscht das Spielerschiff-Modell gegen Wolfen, Wolfen (Venom), Katt oder Bill. Rein kosmetisch (Hitbox/Steuerung unveraendert). Das Modell wird bei Level-Eintritt nachgeladen, funktioniert also in jedem Level."
 type = "Enum"
 options = [ "Arwing", "Wolfen", "Wolfen (Venom)", "Katt", "Bill" ]
 default = "Arwing"
