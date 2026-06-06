@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here.
 
+## [0.6.0] - 2026-06-06
+
+### Added
+- **Ship Skin** — fly a different ship instead of the Arwing: `Wolfen` /
+  `Wolfen (Venom)` / `Katt` / `Bill`. Purely cosmetic (hitbox/controls
+  unchanged). Works in **every** level: the ship model is DMA'd from the ROM
+  into a mod buffer once per level entry and bound to its native RSP segment
+  only for the player-ship draw, then restored (so the level's own ships render
+  normally).
+
+### Fixed
+- Ship Skin crash in levels that don't natively load the chosen ship: mod
+  memory (`recomp_alloc`) lives in RT64's extended RDRAM, so the usual
+  `K0_TO_PHYS` segment base pointed out of bounds. The ship draw is now bracketed
+  with `gEXSetRDRAMExtended` and bound to the extended base, which RT64 resolves
+  correctly for the model and all its vertices/textures.
+
+### Known issues
+- Cosmetic only: in-level cutscenes draw all ships through the same routine, so
+  teammates also show the chosen skin there; in gameplay they stay Arwings.
+
 ## [0.5.0] - 2026-06-05
 
 ### Added
