@@ -767,20 +767,24 @@ RECOMP_HOOK("Display_Arwing_Skel") void Rando_ShipSkinDraw(ArwingInfo* arwing) {
     if (seg == 0) {
         return; /* Puffer nicht bereit -> normaler Arwing in diesem Frame */
     }
-    /* Extended-RDRAM-Modus AN, natives Segment kurz auf unseren (erweiterten)
-     * Puffer biegen, Schiff zeichnen, Modus AUS und Segment wieder auf den Level-
-     * Wert zuruecksetzen — so bleiben Level-eigene DLs (echte Wolf/Allies-Gegner)
-     * intakt. gSegments[] (CPU-Spiegel) NICHT anfassen: diese DL nutzt nur die
-     * RSP-Segmente; ein erweiterter Wert im CPU-Spiegel wuerde Engine-Aufloesungen
-     * zerschiessen. Klammer eng um genau den Schiffs-Draw (Flag ist globaler RT64-
-     * Zustand). */
+    /* Extended-RDRAM-Modus AN (damit RT64 unseren Puffer im erweiterten RDRAM
+     * findet), natives Segment kurz auf unseren Puffer biegen, Schiff zeichnen,
+     * dann das Level-Segment wieder zuruecksetzen, damit Level-eigene DLs (echte
+     * Wolf/Allies-Gegner) intakt bleiben.
+     *
+     * WICHTIG: Wir schalten extended NICHT wieder aus. Der Modus ist globaler
+     * RT64-Zustand; ihn hart auf 0 zu zwingen wuerde anderen Mods, die extended
+     * RDRAM nutzen, den Zustand zerschiessen. Da extended-AN eine sichere
+     * OBERMENGE ist (niedrige Adressen loesen in beiden Modi identisch auf, nur
+     * die erweiterten zusaetzlich korrekt), schadet das Anlassen weder dem
+     * Basisspiel noch anderen Mods. gSegments[] (CPU-Spiegel) NICHT anfassen:
+     * diese DL nutzt nur die RSP-Segmente. */
     save = gSegments[seg];
     Matrix_Push(&gGfxMatrix);
     Matrix_SetGfxMtx(&gMasterDisp);
     gEXSetRDRAMExtended(gMasterDisp++, 1);
     gSPSegment(gMasterDisp++, seg, base);
     gSPDisplayList(gMasterDisp++, skinDL);
-    gEXSetRDRAMExtended(gMasterDisp++, 0);
     gSPSegment(gMasterDisp++, seg, save);
     Matrix_Pop(&gGfxMatrix);
 }

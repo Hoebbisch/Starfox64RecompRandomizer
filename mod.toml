@@ -2,7 +2,7 @@
 
 [manifest]
 id = "sf64_randomizer_hoebbisch"
-version = "0.6.0"
+version = "0.6.1"
 display_name = "Star Fox 64 Randomizer"
 description = """
 A seed-based, fully deterministic randomizer for Star Fox 64: Recompiled. \

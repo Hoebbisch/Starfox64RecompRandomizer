@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## [0.6.1] - 2026-06-08
+
+### Fixed
+- Ship Skin: cleaner coexistence with other mods. The ship draw no longer forces
+  RT64's extended-RDRAM mode off afterwards (it is global state another mod may
+  rely on). Level rendering and the player skin are unaffected.
+
 ## [0.6.0] - 2026-06-06
 
 ### Added
